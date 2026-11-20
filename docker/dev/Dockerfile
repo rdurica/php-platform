@@ -28,7 +28,8 @@ RUN curl -sS https://get.symfony.com/cli/installer | bash -s -- --install-dir=/u
     && chmod +x /usr/local/bin/symfony \
     && mkdir -p "${COMPOSER_HOME}" \
     && composer global require laravel/installer \
-    && chmod -R a+rX "${COMPOSER_HOME}"
+    && chmod -R a+rX "${COMPOSER_HOME}" \
+    && ln -sf "${COMPOSER_HOME}/vendor/bin/laravel" /usr/local/bin/laravel
 
 # User setup + aliases
 RUN adduser -D -u 1000 -s /bin/bash robbyte \

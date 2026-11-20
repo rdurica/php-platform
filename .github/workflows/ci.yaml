@@ -44,12 +44,13 @@ jobs:
           ignore: "DL3018,DL4006,SC2028"
 
   build-test:
-    name: Build & Smoke Test (${{ matrix.variant }})
+    name: Build & Smoke Test (${{ matrix.variant }} / PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         variant: [prod, ci, dev]
+        php: ['8.5']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,7 +58,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build ${{ matrix.variant }} image
+      - name: Build ${{ matrix.variant }} image (PHP ${{ matrix.php }})
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -65,17 +66,20 @@ jobs:
           pull: true
           load: true
           push: false
-          tags: php-platform-test:${{ matrix.variant }}
-          cache-from: type=gha,scope=ci-${{ matrix.variant }}
-          cache-to: type=gha,mode=max,scope=ci-${{ matrix.variant }}
+          build-args: |
+            PHP_VERSION=${{ matrix.php }}
+          tags: php-platform-test:${{ matrix.variant }}-php${{ matrix.php }}
+          cache-from: type=gha,scope=ci-${{ matrix.variant }}-php${{ matrix.php }}
+          cache-to: type=gha,mode=max,scope=ci-${{ matrix.variant }}-php${{ matrix.php }}
 
       - name: Smoke test prod image
         if: matrix.variant == 'prod'
         run: |
-          docker run --rm php-platform-test:prod sh -lc '
+          docker run --rm php-platform-test:prod-php${{ matrix.php }} sh -lc '
             set -e
             test "$(whoami)" = "robbyte"
             php -v
+            php -r "exit(PHP_MAJOR_VERSION . \".\" . PHP_MINOR_VERSION === \"${{ matrix.php }}\" ? 0 : 1);"
             frankenphp version
             frankenphp validate --config /etc/caddy/Caddyfile
             php -r "exit(ini_get(\"expose_php\") ? 1 : 0);"
@@ -89,10 +93,11 @@ jobs:
       - name: Smoke test ci image
         if: matrix.variant == 'ci'
         run: |
-          docker run --rm php-platform-test:ci sh -lc '
+          docker run --rm php-platform-test:ci-php${{ matrix.php }} sh -lc '
             set -e
             test "$(whoami)" = "robbyte"
             php -v
+            php -r "exit(PHP_MAJOR_VERSION . \".\" . PHP_MINOR_VERSION === \"${{ matrix.php }}\" ? 0 : 1);"
             composer --version
             php -r "
               foreach ([\"pdo\",\"pdo_mysql\",\"mysqli\",\"pdo_pgsql\",\"pgsql\",\"zip\",\"intl\",\"bcmath\",\"gd\",\"sockets\"] as \$e) {
@@ -104,10 +109,11 @@ jobs:
       - name: Smoke test dev image
         if: matrix.variant == 'dev'
         run: |
-          docker run --rm php-platform-test:dev sh -lc '
+          docker run --rm php-platform-test:dev-php${{ matrix.php }} sh -lc '
             set -e
             test "$(whoami)" = "robbyte"
             php -v
+            php -r "exit(PHP_MAJOR_VERSION . \".\" . PHP_MINOR_VERSION === \"${{ matrix.php }}\" ? 0 : 1);"
             node -v
             npm -v
             composer --version

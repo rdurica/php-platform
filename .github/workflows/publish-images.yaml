@@ -13,12 +13,13 @@ permissions:
 
 jobs:
   publish:
-    name: Build & Publish (${{ matrix.variant }})
+    name: Build & Publish (${{ matrix.variant }} / PHP ${{ matrix.php }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         variant: [prod, ci, dev]
+        php: ['8.5']
     env:
       REGISTRY: ghcr.io
     steps:
@@ -28,6 +29,16 @@ jobs:
       - name: Lowercase repository name
         id: repo
         run: echo "repo_lower=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Probe upstream versions
+        id: versions
+        run: |
+          BASE_IMAGE="dunglas/frankenphp:1.12-php${{ matrix.php }}-alpine"
+          docker pull "$BASE_IMAGE" >/dev/null
+          EXACT_PHP=$(docker run --rm "$BASE_IMAGE" php -r 'echo PHP_VERSION;')
+          EXACT_FRANKENPHP=$(docker run --rm "$BASE_IMAGE" frankenphp version | head -n1 | tr -d '\r')
+          echo "php_version=$EXACT_PHP" >> "$GITHUB_OUTPUT"
+          echo "frankenphp_version=$EXACT_FRANKENPHP" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -45,12 +56,17 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repo_lower }}/${{ matrix.variant }}
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+            type=semver,pattern={{version}},suffix=-php${{ matrix.php }}
+            type=semver,pattern={{major}}.{{minor}},suffix=-php${{ matrix.php }}
+            type=semver,pattern={{major}},suffix=-php${{ matrix.php }}
+            type=raw,value=php${{ matrix.php }},enable=${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+            type=raw,value=latest,enable=${{ matrix.php == '8.5' && (startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=PHP ${{ steps.versions.outputs.php_version }} / FrankenPHP (${{ matrix.variant }})
+            dev.php-platform.php-version=${{ steps.versions.outputs.php_version }}
+            dev.php-platform.php-minor=${{ matrix.php }}
+            dev.php-platform.frankenphp-version=${{ steps.versions.outputs.frankenphp_version }}
 
       - name: Build & push image
         id: build
@@ -60,10 +76,12 @@ jobs:
           file: docker/${{ matrix.variant }}/Dockerfile
           pull: true
           push: true
+          build-args: |
+            PHP_VERSION=${{ matrix.php }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=publish-${{ matrix.variant }}
-          cache-to: type=gha,mode=max,scope=publish-${{ matrix.variant }}
+          cache-from: type=gha,scope=publish-${{ matrix.variant }}-php${{ matrix.php }}
+          cache-to: type=gha,mode=max,scope=publish-${{ matrix.variant }}-php${{ matrix.php }}
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
@@ -73,14 +91,22 @@ jobs:
         with:
           image-ref: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repo_lower }}/${{ matrix.variant }}@${{ steps.build.outputs.digest }}
           format: 'sarif'
-          output: 'trivy-${{ matrix.variant }}.sarif'
+          output: 'trivy-${{ matrix.variant }}-php${{ matrix.php }}.sarif'
 
       - name: Upload Trivy scan results
         if: ${{ always() && steps.build.outcome == 'success' }}
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: 'trivy-${{ matrix.variant }}.sarif'
-          category: trivy-${{ matrix.variant }}
+          sarif_file: 'trivy-${{ matrix.variant }}-php${{ matrix.php }}.sarif'
+          category: trivy-${{ matrix.variant }}-php${{ matrix.php }}
+
+      - name: Write build summary
+        run: |
+          {
+            echo "| Variant | PHP Minor | Exact PHP | FrankenPHP | Digest |"
+            echo "| --- | --- | --- | --- | --- |"
+            echo "| \`${{ matrix.variant }}\` | \`${{ matrix.php }}\` | \`${{ steps.versions.outputs.php_version }}\` | \`${{ steps.versions.outputs.frankenphp_version }}\` | \`${{ steps.build.outputs.digest }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   update-major-tag:
     name: Update Floating Major Tag

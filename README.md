@@ -53,18 +53,35 @@ Published on every `v*.*.*` tag via [publish-images.yaml](.github/workflows/publ
 
 ### Tagging Policy
 
+Docker base images combine the platform SemVer version with a `-php<major>.<minor>` compatibility suffix (`1.1.0-php8.5`), while git tags and reusable workflow refs stay pure SemVer (`@v1.1.0`).
+
 | Tag format | Example | Behavior |
 | --- | --- | --- |
-| Exact SemVer | `1.0.0` | Immutable pin (recommended in apps for reproducible builds + Renovate PRs) |
-| Minor | `1.0` | Moves with patch releases (`1.0.x`) |
-| Major | `1` | Moves with minor & patch releases (`1.x.x`) |
-| Latest | `latest` | Latest published build |
+| Exact SemVer + PHP | `1.1.0-php8.5` | Immutable pin (recommended in apps for reproducible builds + Renovate PRs) |
+| Minor + PHP | `1.1-php8.5` | Moves with patch releases (`1.1.x-php8.5`) |
+| Major + PHP | `1-php8.5` | Moves with minor & patch releases (`1.x.x-php8.5`) |
+| PHP branch | `php8.5` | Rolling latest for a PHP minor branch |
+| Latest | `latest` | Latest published build of the default PHP version (`8.5`) |
+
+Because Renovate's default Docker versioning splits tags at the first `-` (treating `php8.5` as a compatibility suffix), Renovate automatically proposes & auto-merges `1.1.0-php8.5` → `1.1.1-php8.5`, while **never** silently jumping from `-php8.5` to `-php8.6`. Upgrading an app to a newer PHP minor branch is always an explicit change (`-php8.5` → `-php8.6`).
+
+### Exact Upstream Versions (OCI Labels)
+
+Every published image records the exact upstream patch versions detected at build time:
+
+```bash
+docker inspect --format '{{ index .Config.Labels "dev.php-platform.php-version" }} / {{ index .Config.Labels "dev.php-platform.frankenphp-version" }}' ghcr.io/rdurica/php-platform/prod:1.1.0-php8.5
+```
+
+- `dev.php-platform.php-version` (e.g. `8.5.11`)
+- `dev.php-platform.php-minor` (e.g. `8.5`)
+- `dev.php-platform.frankenphp-version`
 
 ---
 
 ## Reusable Workflows
 
-All workflows support exact version pinning (`@v1.0.0`, recommended with Renovate) or rolling major pinning (`@v1`).
+All workflows support exact version pinning (`@v1.1.0`, recommended with Renovate) or rolling major pinning (`@v1`).
 
 ### 1. Code Quality (`reusable-code-quality.yaml`)
 
@@ -73,7 +90,7 @@ Validates Compose files, runs frontend checks (`typecheck`, `lint`, `format:chec
 ```yaml
 jobs:
   quality:
-    uses: rdurica/php-platform/.github/workflows/reusable-code-quality.yaml@v1.0.0
+    uses: rdurica/php-platform/.github/workflows/reusable-code-quality.yaml@v1.1.0
 ```
 
 | Input | Default | Description |
@@ -91,7 +108,7 @@ Handles boilerplate CI validation (`docker compose config` and Hadolint on `buil
 ```yaml
 jobs:
   checks:
-    uses: rdurica/php-platform/.github/workflows/reusable-ci-checks.yaml@v1.0.0
+    uses: rdurica/php-platform/.github/workflows/reusable-ci-checks.yaml@v1.1.0
 ```
 
 | Input | Default | Description |
@@ -111,7 +128,7 @@ jobs:
       contents: read
       packages: write
       security-events: write
-    uses: rdurica/php-platform/.github/workflows/reusable-build.yaml@v1.0.0
+    uses: rdurica/php-platform/.github/workflows/reusable-build.yaml@v1.1.0
 ```
 
 | Input | Default | Description |
@@ -138,17 +155,17 @@ Applications inherit the shared preset via `renovate.json`:
 Behavior:
 - Groups `ghcr.io/rdurica/php-platform/*` Docker image updates and `rdurica/php-platform` reusable workflow tag updates into a single **`php-platform`** PR per release.
 - Enables `automerge` (when CI passes) for **`minor`**, **`patch`**, and **`digest`** updates.
-- Keeps **`major`** updates (e.g., `v1` → `v2` / new PHP major versions) manual for explicit review.
+- Keeps **`major`** updates (e.g., `v1` → `v2`) manual for explicit review; `-php<minor>` suffixes stay locked to their chosen PHP branch.
 
 ---
 
 ## Releasing a Platform Update
 
 1. Make changes in `docker/` or `.github/workflows/`.
-2. Open a PR or push to `main` — `Platform CI` lints and smoke-tests all 3 images (`prod`, `ci`, `dev`).
-3. Create and push a SemVer tag (e.g., `git tag -a v1.0.1 -m "v1.0.1" && git push origin v1.0.1`).
-4. `Publish Base Images` builds and pushes `1.0.1`, `1.0`, `1`, and `latest` for `prod`, `ci`, and `dev` to GHCR, scans each image with Trivy, and updates the floating `v1` git tag.
-5. Renovate propagates `1.0.1` across all connected application repositories.
+2. Open a PR or push to `main` — `Platform CI` lints and smoke-tests all variants across configured PHP versions.
+3. Create and push a SemVer tag (e.g., `git tag -a v1.1.0 -m "v1.1.0" && git push origin v1.1.0`).
+4. `Publish Base Images` builds and pushes `1.1.0-php8.5`, `1.1-php8.5`, `1-php8.5`, `php8.5`, and `latest` for `prod`, `ci`, and `dev` to GHCR, embeds exact PHP & FrankenPHP OCI labels, scans each image with Trivy, and updates the floating `v1` git tag.
+5. Renovate propagates `1.1.0-php8.5` and `@v1.1.0` across all connected application repositories.
 
 ---
 

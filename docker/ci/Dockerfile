@@ -1,6 +1,6 @@
-ARG FRANKENPHP_IMAGE=dunglas/frankenphp:1.12-php8.5-alpine
-# hadolint ignore=DL3006
-FROM ${FRANKENPHP_IMAGE}
+ARG FRANKENPHP_VERSION=1.12
+ARG PHP_VERSION=8.5
+FROM dunglas/frankenphp:${FRANKENPHP_VERSION}-php${PHP_VERSION}-alpine
 
 ENV TERM=xterm-256color
 ENV TZ=Europe/Prague

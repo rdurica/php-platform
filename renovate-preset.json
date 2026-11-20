@@ -1,0 +1,25 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "description": "Group php-platform base images and reusable workflows together",
+      "matchPackageNames": [
+        "/^ghcr\\.io\\/rdurica\\/php-platform\\//",
+        "/^rdurica\\/php-platform$/"
+      ],
+      "groupName": "php-platform"
+    },
+    {
+      "description": "Auto-merge non-breaking (minor, patch, digest) php-platform updates when CI passes",
+      "matchPackageNames": [
+        "/^ghcr\\.io\\/rdurica\\/php-platform\\//",
+        "/^rdurica\\/php-platform$/"
+      ],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "automerge": true,
+      "automergeType": "pr",
+      "platformAutomerge": true
+    }
+  ]
+}

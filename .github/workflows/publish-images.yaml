@@ -1,0 +1,103 @@
+name: Publish Base Images
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch: ~
+
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+
+jobs:
+  publish:
+    name: Build & Publish (${{ matrix.variant }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [prod, ci, dev]
+    env:
+      REGISTRY: ghcr.io
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lowercase repository name
+        id: repo
+        run: echo "repo_lower=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repo_lower }}/${{ matrix.variant }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - name: Build & push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/${{ matrix.variant }}/Dockerfile
+          pull: true
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=publish-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=publish-${{ matrix.variant }}
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ steps.repo.outputs.repo_lower }}/${{ matrix.variant }}@${{ steps.build.outputs.digest }}
+          format: 'sarif'
+          output: 'trivy-${{ matrix.variant }}.sarif'
+
+      - name: Upload Trivy scan results
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-${{ matrix.variant }}.sarif'
+          category: trivy-${{ matrix.variant }}
+
+  update-major-tag:
+    name: Update Floating Major Tag
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Move floating major tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          MAJOR_TAG="${TAG%%.*}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -fa "$MAJOR_TAG" -m "Update floating tag $MAJOR_TAG to $TAG"
+          git push origin "refs/tags/$MAJOR_TAG" --force

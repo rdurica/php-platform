@@ -1,0 +1,118 @@
+name: Platform CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request: ~
+  workflow_dispatch: ~
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint Dockerfiles & Config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate renovate-preset.json
+        run: python3 -m json.tool renovate-preset.json > /dev/null
+
+      - name: Validate entrypoint scripts
+        run: bash -n docker/prod/docker-entrypoint.sh docker/dev/entrypoint.sh
+
+      - name: Lint Prod Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/prod/Dockerfile
+          ignore: "DL3018,DL4006,SC2028"
+
+      - name: Lint CI Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/ci/Dockerfile
+          ignore: "DL3018,DL4006,SC2028"
+
+      - name: Lint Dev Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: docker/dev/Dockerfile
+          ignore: "DL3018,DL4006,SC2028"
+
+  build-test:
+    name: Build & Smoke Test (${{ matrix.variant }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [prod, ci, dev]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.variant }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/${{ matrix.variant }}/Dockerfile
+          pull: true
+          load: true
+          push: false
+          tags: php-platform-test:${{ matrix.variant }}
+          cache-from: type=gha,scope=ci-${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=ci-${{ matrix.variant }}
+
+      - name: Smoke test prod image
+        if: matrix.variant == 'prod'
+        run: |
+          docker run --rm php-platform-test:prod sh -lc '
+            set -e
+            test "$(whoami)" = "robbyte"
+            php -v
+            frankenphp version
+            frankenphp validate --config /etc/caddy/Caddyfile
+            php -r "exit(ini_get(\"expose_php\") ? 1 : 0);"
+            php -r "
+              foreach ([\"pdo\",\"pdo_mysql\",\"mysqli\",\"pdo_pgsql\",\"pgsql\",\"zip\",\"intl\",\"bcmath\",\"gd\",\"sockets\",\"Zend OPcache\"] as \$e) {
+                if (!extension_loaded(\$e)) { fwrite(STDERR, \"Missing extension: \$e\n\"); exit(1); }
+              }
+            "
+          '
+
+      - name: Smoke test ci image
+        if: matrix.variant == 'ci'
+        run: |
+          docker run --rm php-platform-test:ci sh -lc '
+            set -e
+            test "$(whoami)" = "robbyte"
+            php -v
+            composer --version
+            php -r "
+              foreach ([\"pdo\",\"pdo_mysql\",\"mysqli\",\"pdo_pgsql\",\"pgsql\",\"zip\",\"intl\",\"bcmath\",\"gd\",\"sockets\"] as \$e) {
+                if (!extension_loaded(\$e)) { fwrite(STDERR, \"Missing extension: \$e\n\"); exit(1); }
+              }
+            "
+          '
+
+      - name: Smoke test dev image
+        if: matrix.variant == 'dev'
+        run: |
+          docker run --rm php-platform-test:dev sh -lc '
+            set -e
+            test "$(whoami)" = "robbyte"
+            php -v
+            node -v
+            npm -v
+            composer --version
+            symfony version
+            laravel --version
+            php -m | grep -qi xdebug
+            php -r "exit(ini_get(\"expose_php\") ? 1 : 0);"
+          '

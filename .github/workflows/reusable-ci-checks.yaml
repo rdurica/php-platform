@@ -1,0 +1,47 @@
+name: Reusable CI Checks
+
+on:
+  workflow_call:
+    inputs:
+      dockerfile:
+        description: Dockerfile path to lint with Hadolint
+        required: false
+        type: string
+        default: 'build/prod/Dockerfile'
+      compose-ci-file:
+        description: Path to CI Compose file
+        required: false
+        type: string
+        default: 'compose.ci.yaml'
+      hadolint-ignore:
+        description: Comma-separated Hadolint rules to ignore
+        required: false
+        type: string
+        default: 'DL3018,DL4006,SC2028'
+
+jobs:
+  config:
+    name: Compose Config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate dev Compose config
+        run: docker compose config
+
+      - name: Validate CI Compose config
+        run: docker compose -f "${{ inputs.compose-ci-file }}" config
+
+  lint:
+    name: Docker Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: ${{ inputs.dockerfile }}
+          ignore: ${{ inputs.hadolint-ignore }}

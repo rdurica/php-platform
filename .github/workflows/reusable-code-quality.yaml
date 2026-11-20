@@ -1,0 +1,129 @@
+name: Reusable Code Quality
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version for frontend checks
+        required: false
+        type: string
+        default: '22'
+      compose-ci-file:
+        description: Path to CI Compose file
+        required: false
+        type: string
+        default: 'compose.ci.yaml'
+      run-compose-config:
+        description: Validate Compose files
+        required: false
+        type: boolean
+        default: true
+      run-frontend:
+        description: Run frontend checks when src/package.json exists
+        required: false
+        type: boolean
+        default: true
+      run-backend:
+        description: Run backend checks when src/composer.json exists
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  config:
+    name: Compose Config
+    if: inputs.run-compose-config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate dev Compose config
+        run: docker compose config
+
+      - name: Validate CI Compose config
+        run: docker compose -f "${{ inputs.compose-ci-file }}" config
+
+  frontend:
+    name: Frontend Quality
+    if: inputs.run-frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for package.json
+        id: frontend
+        run: |
+          if [ -f package.json ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "No package.json found; skipping frontend checks."
+          fi
+
+      - name: Setup Node.js
+        if: steps.frontend.outputs.exists == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Run frontend checks
+        if: steps.frontend.outputs.exists == 'true'
+        run: |
+          set -e
+          npm ci
+
+          run_npm_script() {
+            if node -e "const scripts = require(\"./package.json\").scripts || {}; process.exit(scripts[process.argv[1]] ? 0 : 1)" "$1"; then
+              npm run "$1"
+            else
+              echo "No npm script $1; skipping."
+            fi
+          }
+
+          run_npm_script typecheck
+          run_npm_script lint
+          run_npm_script format:check
+
+  backend:
+    name: Backend Quality
+    if: inputs.run-backend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Pull CI image
+        run: docker compose -f "${{ inputs.compose-ci-file }}" pull --ignore-buildable
+
+      - name: Run backend checks in Docker
+        run: |
+          docker compose -f "${{ inputs.compose-ci-file }}" run --rm --user root app sh -lc '
+            set -e
+
+            if [ ! -f composer.json ]; then
+              echo "No composer.json found; skipping backend checks."
+              exit 0
+            fi
+
+            composer validate --strict
+            composer install --no-interaction --prefer-dist
+
+            if [ -f phpstan.neon ] || [ -f phpstan.dist.neon ]; then
+              vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+            else
+              echo "No PHPStan config found; skipping static analysis."
+            fi
+
+            if [ -f .php-cs-fixer.dist.php ] || [ -f .php-cs-fixer.php ]; then
+              vendor/bin/php-cs-fixer fix --dry-run --diff
+            else
+              echo "No PHP CS Fixer config found; skipping code style."
+            fi
+
+            composer audit
+          '

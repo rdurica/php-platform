@@ -1,43 +1,55 @@
-# PHP Platform
+<p align="center">
+  <img src="docs/img/logo.svg" width="76" height="76" alt="PHP Platform logo">
+</p>
 
-Shared **FrankenPHP / PHP 8.5** Docker base images, GitHub **Reusable Workflows**, and a shared **Renovate preset** for all applications created from **[rdurica/php-starter-kit](https://github.com/rdurica/php-starter-kit)**.
+<h1 align="center">PHP Platform</h1>
 
-[![PHP](https://img.shields.io/badge/PHP-8.5-blue.svg)](https://www.php.net/)
-[![FrankenPHP](https://img.shields.io/badge/FrankenPHP-1.12-blue.svg)](https://frankenphp.dev/)
-[![Platform CI](https://github.com/rdurica/php-platform/actions/workflows/ci.yaml/badge.svg)](https://github.com/rdurica/php-platform/actions/workflows/ci.yaml)
-[![Publish Images](https://github.com/rdurica/php-platform/actions/workflows/publish-images.yaml/badge.svg)](https://github.com/rdurica/php-platform/actions/workflows/publish-images.yaml)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+<p align="center">
+  Shared <strong>FrankenPHP / PHP 8.5</strong> Docker base images, GitHub <strong>Reusable Workflows</strong>, and a shared <strong>Renovate preset</strong> for all applications created from <a href="https://github.com/rdurica/php-starter-kit"><strong>rdurica/php-starter-kit</strong></a>.
+</p>
 
+<p align="center">
+  <a href="https://www.php.net/"><img src="https://img.shields.io/badge/PHP-8.5-777BB4?style=flat&amp;logo=php&amp;logoColor=white" alt="PHP 8.5"></a>
+  <a href="https://frankenphp.dev/"><img src="https://img.shields.io/badge/FrankenPHP-1.12-0EA5E9?style=flat" alt="FrankenPHP 1.12"></a>
+  <a href="https://github.com/rdurica/php-platform/actions/workflows/ci.yaml"><img src="https://github.com/rdurica/php-platform/actions/workflows/ci.yaml/badge.svg" alt="Platform CI"></a>
+  <a href="https://github.com/rdurica/php-platform/actions/workflows/publish-images.yaml"><img src="https://github.com/rdurica/php-platform/actions/workflows/publish-images.yaml/badge.svg" alt="Publish Images"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-22C55E?style=flat" alt="License: MIT"></a>
+</p>
+
+<p align="center">
+  <a href="#architecture">Architecture</a> &nbsp;·&nbsp;
+  <a href="#base-docker-images-ghcr">Base Images</a> &nbsp;·&nbsp;
+  <a href="#tagging-policy">Tagging Policy</a> &nbsp;·&nbsp;
+  <a href="#reusable-workflows">Reusable Workflows</a> &nbsp;·&nbsp;
+  <a href="#renovate-preset-renovate-presetjson">Renovate Preset</a> &nbsp;·&nbsp;
+  <a href="#releasing-a-platform-update">Releasing</a>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/banner-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/banner-light.svg">
+    <img src="docs/img/banner-dark.svg" width="100%" alt="PHP Platform — Centralized PHP runtime, maintained in one place">
+  </picture>
+</p>
+
+> [!TIP]
 > **Looking to start a new PHP project?**
-> Use the **[rdurica/php-starter-kit](https://github.com/rdurica/php-starter-kit)** template repository — it consumes these base images and workflows out of the box.
+> Use the **[rdurica/php-starter-kit](https://github.com/rdurica/php-starter-kit)** template repository — it consumes these base images, reusable workflows, and Renovate preset out of the box.
 
 ---
 
 ## Architecture
 
-Instead of copying Dockerfiles, Caddy configs, PHP INI settings, and CI pipelines into every application repository, shared infrastructure lives here and is consumed by versioned tags:
+Instead of copying Dockerfiles, Caddy configs, PHP INI settings, and CI pipelines into every application repository, shared infrastructure lives here and is consumed via versioned tags:
 
-```text
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │                       rdurica/php-platform                          │
-  │                                                                     │
-  │  • GHCR Base Images     ghcr.io/rdurica/php-platform/{prod,ci,dev}  │
-  │  • Reusable Workflows   reusable-{code-quality,ci-checks,build}.yaml│
-  │  • Renovate Preset      renovate-preset.json                        │
-  └───────────────────┬─────────────────────────────┬───────────────────┘
-                      │                             │
-      git tag vX.Y.Z  │ (base images + workflows)   │ Renovate PRs
-                      ▼                             ▼
-  ┌─────────────────────────────────────────────────────────────────────┐
-  │                   rdurica/php-starter-kit (template)                │
-  │                     └── your application repos                      │
-  │                                                                     │
-  │  • Thin build/prod/Dockerfile (~12 lines)                           │
-  │  • compose.yaml / compose.ci.yaml pulling prebuilt GHCR images      │
-  │  • Thin caller workflows + customizable .github/workflows/ci.yaml   │
-  │  • renovate.json extending github>rdurica/php-platform//renovate-preset
-  └─────────────────────────────────────────────────────────────────────┘
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/img/architecture-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/architecture-light.svg">
+    <img src="docs/img/architecture-dark.svg" width="100%" alt="Architecture between rdurica/php-platform and downstream applications">
+  </picture>
+</p>
 
 ---
 
@@ -47,9 +59,9 @@ Published on every `v*.*.*` tag via [publish-images.yaml](.github/workflows/publ
 
 | Image | Base / Contents | Intended Use |
 | --- | --- | --- |
-| `ghcr.io/rdurica/php-platform/prod:<ver>` | FrankenPHP 1.12 (`php8.5-alpine`), PHP production INI (`expose_php = Off`), OPcache + JIT, hardened `Caddyfile` (`admin off`), `docker-entrypoint.sh` (`APP_NAME` aware), `robbyte` user, `HEALTHCHECK` (no Composer) | Final runtime stage in app `build/prod/Dockerfile` |
-| `ghcr.io/rdurica/php-platform/ci:<ver>` | FrankenPHP 1.12 (`php8.5-alpine`), PHP extensions (`pdo_mysql`, `pdo_pgsql`, `zip`, `intl`, `bcmath`, `gd`, `sockets`), `git`, Composer 2 | `vendor` build stage in prod Dockerfiles & fast CI tests |
-| `ghcr.io/rdurica/php-platform/dev:<ver>` | Everything in `ci` + Xdebug, Node.js/npm, OpenSSH, Symfony CLI, Laravel installer, baked dev `Caddyfile` (auto HTTPS + Vite proxy) | Local development via `compose.yaml` |
+| `ghcr.io/rdurica/php-platform/prod:<ver>` | FrankenPHP 1.12 (`php8.5-alpine`), production `php.ini` (`expose_php = Off`), OPcache (`256M`) + tracing JIT (`128M`), hardened `Caddyfile` (`admin off`, security headers, Zstd/Brotli/Gzip), `docker-entrypoint.sh` (`APP_NAME` aware, DB/Redis wait, Laravel/Symfony auto-migrations), `robbyte` user, `/up` `HEALTHCHECK` (no Composer) | Final runtime stage in app `build/prod/Dockerfile` |
+| `ghcr.io/rdurica/php-platform/ci:<ver>` | FrankenPHP 1.12 (`php8.5-alpine`), PHP extensions (`pdo`, `pdo_mysql`, `mysqli`, `pdo_pgsql`, `pgsql`, `zip`, `intl`, `bcmath`, `gd`, `sockets`), `git`, Composer 2 | `vendor` build stage in prod Dockerfiles & fast CI tests |
+| `ghcr.io/rdurica/php-platform/dev:<ver>` | Everything in `ci` + Xdebug 3, Node.js/npm, OpenSSH, Symfony CLI, Laravel installer (`/usr/local/bin/laravel`), baked dev `Caddyfile` (auto HTTPS + Vite HMR proxy), `entrypoint.sh` (auto-starts `npm run dev` when `node_modules` exists) | Local development via `compose.yaml` |
 
 ### Tagging Policy
 
@@ -63,7 +75,10 @@ Docker base images combine the platform SemVer version with a `-php<major>.<mino
 | PHP branch | `php8.5` | Rolling latest for a PHP minor branch |
 | Latest | `latest` | Latest published build of the default PHP version (`8.5`) |
 
-Because Renovate's default Docker versioning splits tags at the first `-` (treating `php8.5` as a compatibility suffix), Renovate automatically proposes & auto-merges `1.1.0-php8.5` → `1.1.1-php8.5`, while **never** silently jumping from `-php8.5` to `-php8.6`. Upgrading an app to a newer PHP minor branch is always an explicit change (`-php8.5` → `-php8.6`).
+Because Renovate's default Docker versioning splits tags at the first `-` (treating `php8.5` as a compatibility suffix), Renovate automatically proposes and auto-merges `1.1.0-php8.5` → `1.1.1-php8.5`, while **never** silently jumping from `-php8.5` to `-php8.6`. Upgrading an app to a newer PHP minor branch is always an explicit change (`-php8.5` → `-php8.6`).
+
+> [!NOTE]
+> **Adding a new PHP minor branch (e.g. `8.6`):** add `'8.6'` to `strategy.matrix.php` in both [.github/workflows/ci.yaml](.github/workflows/ci.yaml) and [.github/workflows/publish-images.yaml](.github/workflows/publish-images.yaml), release a new SemVer tag, and opt applications in explicitly by updating `-php8.5` → `-php8.6`.
 
 ### Exact Upstream Versions (OCI Labels)
 
@@ -83,7 +98,7 @@ docker inspect --format '{{ index .Config.Labels "dev.php-platform.php-version" 
 
 All workflows support exact version pinning (`@v1.1.0`, recommended with Renovate) or rolling major pinning (`@v1`).
 
-### 1. Code Quality (`reusable-code-quality.yaml`)
+### 1. Code Quality ([reusable-code-quality.yaml](.github/workflows/reusable-code-quality.yaml))
 
 Validates Compose files, runs frontend checks (`typecheck`, `lint`, `format:check` when `src/package.json` exists), and runs backend checks (`composer validate --strict`, PHPStan, PHP CS Fixer, `composer audit` when `src/composer.json` exists).
 
@@ -101,7 +116,7 @@ jobs:
 | `run-frontend` | `true` | Run npm checks if `src/package.json` exists |
 | `run-backend` | `true` | Run Composer/PHPStan/CS Fixer checks |
 
-### 2. CI Checks (`reusable-ci-checks.yaml`)
+### 2. CI Checks ([reusable-ci-checks.yaml](.github/workflows/reusable-ci-checks.yaml))
 
 Handles boilerplate CI validation (`docker compose config` and Hadolint on `build/prod/Dockerfile`) while leaving your app's `tests` job directly inside `.github/workflows/ci.yaml` so you can freely customize database services, fixtures, or test commands per app.
 
@@ -117,7 +132,7 @@ jobs:
 | `compose-ci-file` | `'compose.ci.yaml'` | CI Compose file path |
 | `hadolint-ignore` | `'DL3018,DL4006,SC2028'` | Comma-separated Hadolint rules to ignore |
 
-### 3. Production Image Build (`reusable-build.yaml`)
+### 3. Production Image Build ([reusable-build.yaml](.github/workflows/reusable-build.yaml))
 
 Multi-stage production build, GHCR push, and Trivy vulnerability scan with SARIF upload.
 
@@ -141,7 +156,7 @@ jobs:
 
 ---
 
-## Renovate Preset (`renovate-preset.json`)
+## Renovate Preset ([renovate-preset.json](renovate-preset.json))
 
 Applications inherit the shared preset via `renovate.json`:
 
@@ -153,6 +168,7 @@ Applications inherit the shared preset via `renovate.json`:
 ```
 
 Behavior:
+
 - Groups `ghcr.io/rdurica/php-platform/*` Docker image updates and `rdurica/php-platform` reusable workflow tag updates into a single **`php-platform`** PR per release.
 - Enables `automerge` (when CI passes) for **`minor`**, **`patch`**, and **`digest`** updates.
 - Keeps **`major`** updates (e.g., `v1` → `v2`) manual for explicit review; `-php<minor>` suffixes stay locked to their chosen PHP branch.
@@ -162,9 +178,9 @@ Behavior:
 ## Releasing a Platform Update
 
 1. Make changes in `docker/` or `.github/workflows/`.
-2. Open a PR or push to `main` — `Platform CI` lints and smoke-tests all variants across configured PHP versions.
+2. Open a PR or push to `main` — [Platform CI](.github/workflows/ci.yaml) lints and smoke-tests all variants across configured PHP versions.
 3. Create and push a SemVer tag (e.g., `git tag -a v1.1.0 -m "v1.1.0" && git push origin v1.1.0`).
-4. `Publish Base Images` builds and pushes `1.1.0-php8.5`, `1.1-php8.5`, `1-php8.5`, `php8.5`, and `latest` for `prod`, `ci`, and `dev` to GHCR, embeds exact PHP & FrankenPHP OCI labels, scans each image with Trivy, and updates the floating `v1` git tag.
+4. [Publish Base Images](.github/workflows/publish-images.yaml) builds and pushes `1.1.0-php8.5`, `1.1-php8.5`, `1-php8.5`, `php8.5`, and `latest` for `prod`, `ci`, and `dev` to GHCR, embeds exact PHP & FrankenPHP OCI labels, scans each image with Trivy, and updates the floating `v1` git tag.
 5. Renovate propagates `1.1.0-php8.5` and `@v1.1.0` across all connected application repositories.
 
 ---
@@ -174,6 +190,8 @@ Behavior:
 - **[rdurica/php-starter-kit](https://github.com/rdurica/php-starter-kit)** — Template repository for starting new Laravel, Symfony, or Nette applications on top of `php-platform`.
 - **[rdurica/php_starter_kit](https://github.com/rdurica/php_starter_kit)** — Legacy monolithic starter kit (unsupported).
 
+---
+
 ## License
 
-This project is licensed under the terms of the [MIT license](LICENSE).
+This project is licensed under the terms of the [MIT License](LICENSE).
